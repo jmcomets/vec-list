@@ -1,8 +1,8 @@
-#include "llist.h"
+#include <vec_list>
 
 void test_basic_usage()
 {
-    List<int> ls;
+    vec_list<int> ls;
     assert(ls.size() == 0);
     assert(ls.empty());
     ls.push_back(1);
@@ -26,10 +26,10 @@ void test_basic_usage()
 
 void test_insertion()
 {
-    List<int> ls;
+    vec_list<int> ls;
     auto it2 = ls.insert(ls.end(), 2);
     assert(ls.back() == 2);
-    auto it0 = ls.insert(ls.begin(), 0);
+    ls.insert(ls.begin(), 0);
     assert(ls.front() == 0);
     assert(ls.size() == 2);
     auto it1 = ls.insert(it2, 1);

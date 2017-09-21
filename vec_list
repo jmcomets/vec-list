@@ -8,7 +8,7 @@
 #include <vector>
 
 template <typename T>
-class List
+class vec_list
 {
     public:
         typedef T value_type;
@@ -23,132 +23,132 @@ class List
         typedef const value_type* const_pointer;
 
     private:
-        struct Node
+        struct node_data
         {
             std::optional<T> value;
             std::optional<size_type> next_id;
             std::optional<size_type> prev_id;
         };
 
-        struct Entry
+        struct entry_data
         {
             size_type id;
-            Node& node;
+            node_data& node;
         };
 
         template <typename V>
-        class It: public std::iterator<
+        class partial_it: public std::iterator<
                   std::bidirectional_iterator_tag,
                   V, difference_type, V*, V&>
         {
-            typedef It<V> Self;
+            typedef partial_it<V> self;
 
             // TODO handle constness here
-            typedef List<T> Ls;
+            typedef vec_list<T> parent;
 
-            friend class List;
+            friend class vec_list;
 
             public:
-                explicit It(Ls& ls, std::optional<size_type> id = std::nullopt):
-                    m_ls(&ls),
+                explicit partial_it(parent& ls, std::optional<size_type> id = std::nullopt):
+                    m_parent(&ls),
                     m_id(id)
                 {
                 }
 
                 template <typename U>
-                It(const It<U>& other):
-                    m_ls(other.m_ls),
+                partial_it(const partial_it<U>& other):
+                    m_parent(other.m_parent),
                     m_id(other.m_id)
                 {
                 }
 
-                Self& operator++()
+                self& operator++()
                 {
                     if (m_id)
                     {
-                        const Node& node = m_ls->m_nodes[*m_id];
+                        const node_data& node = m_parent->m_nodes[*m_id];
                         m_id = node.next_id;
                     }
                     return *this;
                 }
 
-                Self operator++(int)
+                self operator++(int)
                 {
-                    Self retval = *this;
+                    self retval = *this;
                     ++(*this);
                     return retval;
                 }
 
-                Self& operator--()
+                self& operator--()
                 {
                     if (m_id)
                     {
-                        const Node& node = m_ls->m_nodes[*m_id];
+                        const node_data& node = m_parent->m_nodes[*m_id];
                         m_id = node.prev_id;
                     }
                     else
                     {
                         // we're at the end, use the last id
-                        m_id = m_ls->m_last_id;
+                        m_id = m_parent->m_last_id;
                     }
                     return *this;
                 }
 
-                Self operator--(int)
+                self operator--(int)
                 {
-                    Self retval = *this;
+                    self retval = *this;
                     --(*this);
                     return retval;
                 }
 
-                bool operator==(const Self& other) const
+                bool operator==(const self& other) const
                 {
-                    return m_ls == other.m_ls && m_id == other.m_id;
+                    return m_parent == other.m_parent && m_id == other.m_id;
                 }
 
-                bool operator!=(const Self& other) const
+                bool operator!=(const self& other) const
                 {
                     return !(*this == other);
                 }
 
                 V& operator*() const
                 {
-                    auto& node = m_ls->m_nodes[*m_id];
+                    auto& node = m_parent->m_nodes[*m_id];
                     return *node.value;
                 }
 
                 V* operator->() const
                 {
-                    auto& node = m_ls->m_nodes[*m_id];
+                    auto& node = m_parent->m_nodes[*m_id];
                     return &node.value;
                 }
 
             private:
-                Ls* m_ls;
+                parent* m_parent;
                 std::optional<size_type> m_id;
         };
 
     public:
-        explicit List():
+        explicit vec_list():
             m_max_id(0)
         {
         }
 
-        List(size_type count, const T& value);
-        explicit List(size_type count);
+        vec_list(size_type count, const T& value);
+        explicit vec_list(size_type count);
 
         template <class InputIt>
-        List(InputIt first, InputIt last);
+        vec_list(InputIt first, InputIt last);
 
-        List(const List& other) = default;
-        List(List&& other) = default;
+        vec_list(const vec_list& other) = default;
+        vec_list(vec_list&& other) = default;
 
-        List& operator=(const List& other) = default;
+        vec_list& operator=(const vec_list& other) = default;
 
-        List(std::initializer_list<T> init);
+        vec_list(std::initializer_list<T> init);
 
-        typedef It<value_type> iterator;
-        typedef It<const value_type> const_iterator;
+        typedef partial_it<value_type> iterator;
+        typedef partial_it<const value_type> const_iterator;
 
         typedef std::reverse_iterator<iterator> reverse_iterator;
         typedef std::reverse_iterator<const_iterator> const_reverse_iterator;
@@ -315,7 +315,7 @@ class List
         // Returns an iterator pointing to the inserted value
         iterator insert(const_iterator pos, T&& value)
         {
-            Entry e = put(std::move(value));
+            entry_data e = put(std::move(value));
 
             // no id => end
             if (!pos.m_id)
@@ -327,7 +327,7 @@ class List
                 }
                 else
                 {
-                    Node& last_node = m_nodes[*m_last_id];
+                    node_data& last_node = m_nodes[*m_last_id];
                     last_node.next_id = e.id;
                     e.node.prev_id = m_last_id;
                     m_last_id = e.id;
@@ -349,7 +349,7 @@ class List
                 }
                 else
                 {
-                    Node& first_node = m_nodes[*m_first_id];
+                    node_data& first_node = m_nodes[*m_first_id];
                     first_node.prev_id = e.id;
                     e.node.next_id = m_first_id;
                     m_first_id = e.id;
@@ -425,7 +425,7 @@ class List
         {
             // no id => back
             size_type id = pos.m_id.value_or(*m_last_id);
-            const Node& node = m_nodes[id];
+            const node_data& node = m_nodes[id];
 
             // invalidate the node's id
             pop(id);
@@ -437,7 +437,7 @@ class List
             }
             else
             {
-                Node& prev_node = m_nodes[*node.prev_id];
+                node_data& prev_node = m_nodes[*node.prev_id];
                 prev_node.next_id = node.next_id;
             }
 
@@ -448,7 +448,7 @@ class List
             }
             else
             {
-                Node& next_node = m_nodes[*node.next_id];
+                node_data& next_node = m_nodes[*node.next_id];
                 next_node.prev_id = node.prev_id;
             }
 
@@ -489,7 +489,7 @@ class List
         // sort - sorts the elements
 
     private:
-        Entry put(T&& value)
+        entry_data put(T&& value)
         {
             size_type id;
             if (!m_free_ids.empty())
@@ -509,7 +509,7 @@ class List
                 m_nodes.resize(id + 1);
             }
 
-            Node& node = m_nodes[id];
+            node_data& node = m_nodes[id];
             node.value = value;
             node.next_id = node.prev_id = std::nullopt;
             return { id, node };
@@ -526,7 +526,7 @@ class List
         }
 
     private:
-        std::vector<Node> m_nodes;
+        std::vector<node_data> m_nodes;
 
         std::optional<size_type> m_first_id;
         std::optional<size_type> m_last_id;
@@ -536,24 +536,26 @@ class List
 };
 
 template <typename T>
-bool operator==(const List<T>& lhs, const List<T>& rhs);
+bool operator==(const vec_list<T>& lhs, const vec_list<T>& rhs);
 
 template <typename T>
-bool operator!=(const List<T>& lhs, const List<T>& rhs);
+bool operator!=(const vec_list<T>& lhs, const vec_list<T>& rhs);
 
 template <typename T>
-bool operator<(const List<T>& lhs, const List<T>& rhs);
+bool operator<(const vec_list<T>& lhs, const vec_list<T>& rhs);
 
 template <typename T>
-bool operator<=(const List<T>& lhs, const List<T>& rhs);
+bool operator<=(const vec_list<T>& lhs, const vec_list<T>& rhs);
 
 template <typename T>
-bool operator>(const List<T>& lhs, const List<T>& rhs);
+bool operator>(const vec_list<T>& lhs, const vec_list<T>& rhs);
 
 template <typename T>
-bool operator>=(const List<T>& lhs, const List<T>& rhs);
+bool operator>=(const vec_list<T>& lhs, const vec_list<T>& rhs);
 
 template <typename T>
-void swap(List<T>& lhs, List<T>& rhs);
+void swap(vec_list<T>& lhs, vec_list<T>& rhs);
 
 #endif // LLIST_H
+
+// vim: ft=cpp et sw=4 sts=4
