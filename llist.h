@@ -162,20 +162,24 @@ class List
         // No iterators or references are invalidated
         void push_back(T&& value)
         {
-            Entry e = put(std::move(value));
+            insert(end(), std::move(value));
+        }
 
-            if (!m_last_id)
-            {
-                assert(!m_first_id);
-                m_first_id = m_last_id = e.id;
-            }
-            else
-            {
-                Node& last_node = m_nodes[*m_last_id];
-                last_node.next_id = e.id;
-                e.node.prev_id = m_last_id;
-                m_last_id = e.id;
-            }
+        // Prepends the given element value to the beginning of the container.
+        //
+        // No iterators or references are invalidated.
+        void push_front(T&& value)
+        {
+            insert(begin(), std::move(value));
+        }
+
+        // Removes the first element of the container. If there are no elements
+        // in the container, the behavior is undefined.
+        //
+        // References and iterators to the erased element are invalidated.
+        void pop_front()
+        {
+            erase(begin());
         }
 
         // Removes the last element of the container.
@@ -185,17 +189,7 @@ class List
         // References and iterators to the erased element are invalidated.
         void pop_back()
         {
-            Node& last_node = m_nodes[*m_last_id];
-
-            // invalidate the last node's id
-            pop(*m_last_id);
-
-            m_last_id = last_node.prev_id;
-            if (m_last_id)
-            {
-                Node& new_last_node = m_nodes[*m_last_id];
-                new_last_node.next_id = std::nullopt;
-            }
+            erase(end());
         }
 
         // Returns the number of elements in the container, i.e. std::distance(begin(), end()).
@@ -208,46 +202,6 @@ class List
         bool empty() const noexcept
         {
             return size() == 0;
-        }
-
-        // Prepends the given element value to the beginning of the container.
-        //
-        // No iterators or references are invalidated.
-        void push_front(T&& value)
-        {
-            Entry e = put(std::move(value));
-
-            if (!m_first_id)
-            {
-                assert(!m_last_id);
-                m_first_id = m_last_id = e.id;
-            }
-            else
-            {
-                Node& first_node = m_nodes[*m_first_id];
-                first_node.prev_id = e.id;
-                e.node.next_id = m_first_id;
-                m_first_id = e.id;
-            }
-        }
-
-        // Removes the first element of the container. If there are no elements
-        // in the container, the behavior is undefined.
-        //
-        // References and iterators to the erased element are invalidated.
-        void pop_front()
-        {
-            Node& first_node = m_nodes[*m_first_id];
-
-            // invalidate the last node's id
-            pop(*m_last_id);
-
-            m_first_id = first_node.next_id;
-            if (m_first_id)
-            {
-                Node& new_first_node = m_nodes[*m_first_id];
-                new_first_node.prev_id = std::nullopt;
-            }
         }
 
         // Returns a reference to the first element in the container.
@@ -361,10 +315,24 @@ class List
         // Returns an iterator pointing to the inserted value
         iterator insert(const_iterator pos, T&& value)
         {
+            Entry e = put(std::move(value));
+
             // no id => end
             if (!pos.m_id)
             {
-                push_back(std::move(value));
+                if (!m_last_id)
+                {
+                    assert(!m_first_id);
+                    m_first_id = m_last_id = e.id;
+                }
+                else
+                {
+                    Node& last_node = m_nodes[*m_last_id];
+                    last_node.next_id = e.id;
+                    e.node.prev_id = m_last_id;
+                    m_last_id = e.id;
+                }
+
                 return iterator(*this, m_last_id);
             }
 
@@ -374,14 +342,25 @@ class List
             // no prev id => begin
             if (!next_node.prev_id)
             {
-                push_front(std::move(value));
-                return begin();
+                if (!m_first_id)
+                {
+                    assert(!m_last_id);
+                    m_first_id = m_last_id = e.id;
+                }
+                else
+                {
+                    Node& first_node = m_nodes[*m_first_id];
+                    first_node.prev_id = e.id;
+                    e.node.next_id = m_first_id;
+                    m_first_id = e.id;
+                }
+
+                return iterator(*this, m_first_id);
             }
 
             size_type prev_id = *next_node.prev_id;
             auto& prev_node = m_nodes[prev_id];
 
-            Entry e = put(std::move(value));
             prev_node.next_id = e.id;
             next_node.prev_id = e.id;
             e.node.prev_id = prev_id;
@@ -458,8 +437,6 @@ class List
         iterator erase(const_iterator first, const_iterator last)
         {
         }
-
-        // erase - erases elements
 
         // Modifiers
         // emplace - constructs element in-place
