@@ -34,10 +34,13 @@ void test_insertion()
     assert(ls.size() == 2);
     auto it1 = ls.insert(it2, 1);
     assert(ls.size() == 3);
-    ls.erase(ls.end());
     assert(ls.back() == 2);
-    ls.erase(it2);
-    assert(ls.size() == 1);
+    ls.erase(ls.end());
+    assert(ls.back() == 1);
+    ls.erase(it1);
+    assert(ls.back() == 0);
+    ls.erase(ls.begin());
+    assert(ls.empty());
 }
 
 int main()

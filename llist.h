@@ -423,6 +423,36 @@ class List
         // Returns the iterator following the last removed element.
         iterator erase(const_iterator pos)
         {
+            // no id => back
+            size_type id = pos.m_id.value_or(*m_last_id);
+            const Node& node = m_nodes[id];
+
+            // invalidate the node's id
+            pop(id);
+
+            // no prev id => begin
+            if (!node.prev_id)
+            {
+                m_first_id = node.next_id;
+            }
+            else
+            {
+                Node& prev_node = m_nodes[*node.prev_id];
+                prev_node.next_id = node.next_id;
+            }
+
+            // no next id => end
+            if (!node.next_id)
+            {
+                m_last_id = node.prev_id;
+            }
+            else
+            {
+                Node& next_node = m_nodes[*node.next_id];
+                next_node.prev_id = node.prev_id;
+            }
+
+            return iterator(*this, node.next_id);
         }
 
         // Removes the elements in the range [first; last).
@@ -436,6 +466,12 @@ class List
         // Returns the iterator following the last removed element.
         iterator erase(const_iterator first, const_iterator last)
         {
+            iterator it = first;
+            for (; first != last; ++first)
+            {
+                it = erase(first);
+            }
+            return it;
         }
 
         // Modifiers
