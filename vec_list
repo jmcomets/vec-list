@@ -1,10 +1,9 @@
-#ifndef LLIST_H
-#define LLIST_H
+#ifndef VEC_LIST_H
+#define VEC_LIST_H
 
 #include <cassert>
 #include <iterator>
 #include <optional>
-#include <unordered_set>
 #include <vector>
 
 template <typename T>
@@ -23,16 +22,46 @@ class vec_list
         typedef const value_type* const_pointer;
 
     private:
+        class address
+        {
+            static const size_type null = -1;
+
+            public:
+                address(size_type val = null):
+                    m_val(val)
+                {
+                }
+
+                address& operator=(size_type val)
+                {
+                    m_val = val;
+                    return *this;
+                }
+
+                size_type operator*() const
+                {
+                    return m_val;
+                }
+
+                operator bool() const
+                {
+                    return m_val != null;
+                }
+
+            private:
+                size_type m_val;
+        };
+
         struct node_data
         {
             std::optional<T> value;
-            std::optional<size_type> next_id;
-            std::optional<size_type> prev_id;
+            address next_addr;
+            address prev_addr;
         };
 
-        struct entry_data
+        struct allocated_node
         {
-            size_type id;
+            size_type addr;
             node_data& node;
         };
 
@@ -42,32 +71,30 @@ class vec_list
                   V, difference_type, V*, V&>
         {
             typedef partial_it<V> self;
-
-            // TODO handle constness here
             typedef vec_list<T> parent;
 
             friend class vec_list;
 
             public:
-                explicit partial_it(parent& ls, std::optional<size_type> id = std::nullopt):
+                explicit partial_it(parent& ls, address addr = address()):
                     m_parent(&ls),
-                    m_id(id)
+                    m_addr(addr)
                 {
                 }
 
                 template <typename U>
                 partial_it(const partial_it<U>& other):
                     m_parent(other.m_parent),
-                    m_id(other.m_id)
+                    m_addr(other.m_addr)
                 {
                 }
 
                 self& operator++()
                 {
-                    if (m_id)
+                    if (m_addr)
                     {
-                        const node_data& node = m_parent->m_nodes[*m_id];
-                        m_id = node.next_id;
+                        const node_data& node = m_parent->m_nodes.at(*m_addr);
+                        m_addr = node.next_addr;
                     }
                     return *this;
                 }
@@ -81,15 +108,15 @@ class vec_list
 
                 self& operator--()
                 {
-                    if (m_id)
+                    if (m_addr)
                     {
-                        const node_data& node = m_parent->m_nodes[*m_id];
-                        m_id = node.prev_id;
+                        const node_data& node = m_parent->m_nodes.at(*m_addr);
+                        m_addr = node.prev_addr;
                     }
                     else
                     {
-                        // we're at the end, use the last id
-                        m_id = m_parent->m_last_id;
+                        // we're at the end, use the last address
+                        m_addr = m_parent->m_last_addr;
                     }
                     return *this;
                 }
@@ -103,7 +130,7 @@ class vec_list
 
                 bool operator==(const self& other) const
                 {
-                    return m_parent == other.m_parent && m_id == other.m_id;
+                    return m_parent == other.m_parent && m_addr == other.m_addr;
                 }
 
                 bool operator!=(const self& other) const
@@ -113,39 +140,58 @@ class vec_list
 
                 V& operator*() const
                 {
-                    auto& node = m_parent->m_nodes[*m_id];
+                    auto& node = m_parent->m_nodes.at(*m_addr);
                     return *node.value;
                 }
 
                 V* operator->() const
                 {
-                    auto& node = m_parent->m_nodes[*m_id];
+                    auto& node = m_parent->m_nodes.at(*m_addr);
                     return &node.value;
                 }
 
             private:
                 parent* m_parent;
-                std::optional<size_type> m_id;
+                address m_addr;
         };
 
     public:
         explicit vec_list():
-            m_max_id(0)
+            m_total_addresses(0)
         {
         }
 
-        vec_list(size_type count, const T& value);
-        explicit vec_list(size_type count);
+        vec_list(size_type count, const T& value)
+        {
+            for (; 0 < count; --count)
+            {
+                push_back(value);
+            }
+        }
+
+        explicit vec_list(size_type count):
+            vec_list(count, T())
+        {
+        }
 
         template <class InputIt>
-        vec_list(InputIt first, InputIt last);
+        vec_list(InputIt first, InputIt last)
+        {
+            for (; first != last; ++first)
+            {
+                push_back(*first);
+            }
+        }
 
         vec_list(const vec_list& other) = default;
         vec_list(vec_list&& other) = default;
 
         vec_list& operator=(const vec_list& other) = default;
 
-        vec_list(std::initializer_list<T> init);
+        vec_list(std::initializer_list<T> init):
+            vec_list(init.begin(), init.end())
+        {
+        }
 
         typedef partial_it<value_type> iterator;
         typedef partial_it<const value_type> const_iterator;
@@ -156,8 +202,18 @@ class vec_list
         // assign - assigns values to the container
 
         // Appends the given element value to the end of the container.
-        //      1) The new element is initialized as a copy of value.
-        //      2) value is moved into the new element.
+        //
+        // The new element is initialized as a copy of value.
+        //
+        // No iterators or references are invalidated
+        void push_back(const T& value)
+        {
+            insert(end(), value);
+        }
+
+        // Appends the given element value to the end of the container.
+        //
+        // value is moved into the new element.
         //
         // No iterators or references are invalidated
         void push_back(T&& value)
@@ -166,6 +222,18 @@ class vec_list
         }
 
         // Prepends the given element value to the beginning of the container.
+        //
+        // The new element is initialized as a copy of value.
+        //
+        // No iterators or references are invalidated.
+        void push_front(const T& value)
+        {
+            insert(begin(), value);
+        }
+
+        // Prepends the given element value to the beginning of the container.
+        //
+        // value is moved into the new element.
         //
         // No iterators or references are invalidated.
         void push_front(T&& value)
@@ -195,7 +263,7 @@ class vec_list
         // Returns the number of elements in the container, i.e. std::distance(begin(), end()).
         size_type size() const noexcept
         {
-            return nb_ids();
+            return nb_addresses();
         }
 
         // Checks if the container has no elements, i.e. whether begin() == end().
@@ -242,7 +310,7 @@ class vec_list
 
         iterator begin()
         {
-            return iterator(*this, m_first_id);
+            return iterator(*this, m_first_addr);
         }
 
         const_iterator begin() const
@@ -252,7 +320,7 @@ class vec_list
 
         const_iterator cbegin() const
         {
-            return const_iterator(*this, m_first_id);
+            return const_iterator(*this, m_first_addr);
         }
 
         iterator end()
@@ -302,70 +370,34 @@ class vec_list
 
         void clear()
         {
-            m_nodes.clear();
-            m_free_ids.clear();
-            m_first_id = m_last_id = std::nullopt;
-            m_max_id = 0;
+            clear_entries();
+            m_first_addr = m_last_addr = address();
         }
 
         // Inserts value before the location pointed to by pos
+        //
+        // The new element is initialized as a copy of value.
+        //
+        // No iterators or references are invalidated.
+        //
+        // Returns an iterator pointing to the inserted value
+        iterator insert(const_iterator pos, const T& value)
+        {
+            allocated_node e = put(value);
+            return insert_entry(pos.m_addr, e);
+        }
+
+        // Inserts value before the location pointed to by pos
+        //
+        // value is moved into the new element.
         //
         // No iterators or references are invalidated.
         //
         // Returns an iterator pointing to the inserted value
         iterator insert(const_iterator pos, T&& value)
         {
-            entry_data e = put(std::move(value));
-
-            // no id => end
-            if (!pos.m_id)
-            {
-                if (!m_last_id)
-                {
-                    assert(!m_first_id);
-                    m_first_id = m_last_id = e.id;
-                }
-                else
-                {
-                    node_data& last_node = m_nodes[*m_last_id];
-                    last_node.next_id = e.id;
-                    e.node.prev_id = m_last_id;
-                    m_last_id = e.id;
-                }
-
-                return iterator(*this, m_last_id);
-            }
-
-            size_type next_id = *pos.m_id;
-            auto& next_node = m_nodes[next_id];
-
-            // no prev id => begin
-            if (!next_node.prev_id)
-            {
-                if (!m_first_id)
-                {
-                    assert(!m_last_id);
-                    m_first_id = m_last_id = e.id;
-                }
-                else
-                {
-                    node_data& first_node = m_nodes[*m_first_id];
-                    first_node.prev_id = e.id;
-                    e.node.next_id = m_first_id;
-                    m_first_id = e.id;
-                }
-
-                return iterator(*this, m_first_id);
-            }
-
-            size_type prev_id = *next_node.prev_id;
-            auto& prev_node = m_nodes[prev_id];
-
-            prev_node.next_id = e.id;
-            next_node.prev_id = e.id;
-            e.node.prev_id = prev_id;
-            e.node.next_id = next_id;
-            return iterator(*this, e.id);
+            allocated_node e = put(std::move(value));
+            return insert_entry(pos.m_addr, e);
         }
 
         // Inserts count copies of the value before the location pointed to by pos.
@@ -423,36 +455,36 @@ class vec_list
         // Returns the iterator following the last removed element.
         iterator erase(const_iterator pos)
         {
-            // no id => back
-            size_type id = pos.m_id.value_or(*m_last_id);
-            const node_data& node = m_nodes[id];
+            // no address => back
+            size_type addr = pos.m_addr ? *pos.m_addr : *m_last_addr;
+            const node_data& node = m_nodes.at(addr);
 
-            // invalidate the node's id
-            pop(id);
+            // invalidate the node's address
+            pop(addr);
 
-            // no prev id => begin
-            if (!node.prev_id)
+            // no prev address => begin
+            if (!node.prev_addr)
             {
-                m_first_id = node.next_id;
+                m_first_addr = node.next_addr;
             }
             else
             {
-                node_data& prev_node = m_nodes[*node.prev_id];
-                prev_node.next_id = node.next_id;
+                node_data& prev_node = m_nodes.at(*node.prev_addr);
+                prev_node.next_addr = node.next_addr;
             }
 
-            // no next id => end
-            if (!node.next_id)
+            // no next address => end
+            if (!node.next_addr)
             {
-                m_last_id = node.prev_id;
+                m_last_addr = node.prev_addr;
             }
             else
             {
-                node_data& next_node = m_nodes[*node.next_id];
-                next_node.prev_id = node.prev_id;
+                node_data& next_node = m_nodes.at(*node.next_addr);
+                next_node.prev_addr = node.prev_addr;
             }
 
-            return iterator(*this, node.next_id);
+            return iterator(*this, node.next_addr);
         }
 
         // Removes the elements in the range [first; last).
@@ -489,50 +521,110 @@ class vec_list
         // sort - sorts the elements
 
     private:
-        entry_data put(T&& value)
+        iterator insert_entry(address next_addr, allocated_node& a)
         {
-            size_type id;
-            if (!m_free_ids.empty())
+            // no next_addr => end
+            if (!next_addr)
             {
-                auto it = m_free_ids.begin();
-                id = *it;
-                m_free_ids.erase(it);
+                if (!m_last_addr)
+                {
+                    assert(!m_first_addr);
+                    m_first_addr = m_last_addr = a.addr;
+                }
+                else
+                {
+                    node_data& last_node = m_nodes.at(*m_last_addr);
+                    last_node.next_addr = a.addr;
+                    a.node.prev_addr = m_last_addr;
+                    m_last_addr = a.addr;
+                }
+
+                return iterator(*this, m_last_addr);
+            }
+
+            auto& next_node = m_nodes.at(*next_addr);
+
+            // no prev address => begin
+            if (!next_node.prev_addr)
+            {
+                if (!m_first_addr)
+                {
+                    assert(!m_last_addr);
+                    m_first_addr = m_last_addr = a.addr;
+                }
+                else
+                {
+                    node_data& first_node = m_nodes.at(*m_first_addr);
+                    first_node.prev_addr = a.addr;
+                    a.node.next_addr = m_first_addr;
+                    m_first_addr = a.addr;
+                }
+
+                return iterator(*this, m_first_addr);
+            }
+
+            size_type prev_addr = *next_node.prev_addr;
+            auto& prev_node = m_nodes.at(prev_addr);
+
+            prev_node.next_addr = a.addr;
+            next_node.prev_addr = a.addr;
+            a.node.prev_addr = prev_addr;
+            a.node.next_addr = next_addr;
+            return iterator(*this, a.addr);
+        }
+
+        allocated_node put(T value)
+        {
+            // pick an address, re-using available ones
+            size_type addr;
+            if (m_available_addresses.empty())
+            {
+                addr = m_total_addresses;
+                ++m_total_addresses;
             }
             else
             {
-                id = m_max_id++;
+                addr = m_available_addresses.back();
+                m_available_addresses.pop_back();
             }
 
             // resize the vec if needed
-            if (id <= m_nodes.size())
+            if (addr >= m_nodes.size())
             {
-                m_nodes.resize(id + 1);
+                m_nodes.resize(addr + 1);
             }
 
-            node_data& node = m_nodes[id];
+            node_data& node = m_nodes.at(addr);
             node.value = value;
-            node.next_id = node.prev_id = std::nullopt;
-            return { id, node };
+            node.next_addr = node.prev_addr = address();
+            return { addr, node };
         }
 
-        void pop(size_type id)
+        void pop(size_type addr)
         {
-            m_free_ids.insert(id);
+            m_available_addresses.push_back(addr);
         }
 
-        size_type nb_ids() const noexcept
+        void clear_entries()
         {
-            return m_max_id - m_free_ids.size();
+            m_nodes.clear();
+            m_available_addresses.clear();
+            m_total_addresses = 0;
+        }
+
+        size_type nb_addresses() const noexcept
+        {
+            return m_total_addresses - m_available_addresses.size();
         }
 
     private:
         std::vector<node_data> m_nodes;
 
-        std::optional<size_type> m_first_id;
-        std::optional<size_type> m_last_id;
+        address m_first_addr;
+        address m_last_addr;
 
-        std::unordered_set<size_type> m_free_ids;
-        size_type m_max_id;
+        std::vector<size_type> m_available_addresses;
+        size_type m_total_addresses;
 };
 
 template <typename T>
@@ -556,6 +648,6 @@ bool operator>=(const vec_list<T>& lhs, const vec_list<T>& rhs);
 template <typename T>
 void swap(vec_list<T>& lhs, vec_list<T>& rhs);
 
-#endif // LLIST_H
+#endif // VEC_LIST_H
 
 // vim: ft=cpp et sw=4 sts=4
